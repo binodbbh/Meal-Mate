@@ -11,13 +11,22 @@ import kotlinx.serialization.json.Json
 
 private val Context.mealPlanDataStore: DataStore<Preferences> by preferencesDataStore(name = "meal_plans")
 
-class MealPlanRepository(private val context: Context) {
-    private object PreferencesKeys {
-        val MEAL_PLANS = stringPreferencesKey("meal_plans")
+class MealPlanRepository(
+    private val context: Context,
+    private val userRepository: UserRepository
+) {
+    private fun getUserMealPlanKey(email: String): Preferences.Key<String> {
+        return stringPreferencesKey("meal_plans_$email")
+    }
+
+    private suspend fun getCurrentUserMealPlanKey(): Preferences.Key<String> {
+        val currentUser = userRepository.getCurrentUser()
+        return getUserMealPlanKey(currentUser?.email ?: "default")
     }
 
     val mealPlans: Flow<List<MealPlan>> = context.mealPlanDataStore.data.map { preferences ->
-        val plansString = preferences[PreferencesKeys.MEAL_PLANS] ?: "[]"
+        val key = getCurrentUserMealPlanKey()
+        val plansString = preferences[key] ?: "[]"
         try {
             Json.decodeFromString<List<MealPlan>>(plansString)
         } catch (e: Exception) {
@@ -26,8 +35,16 @@ class MealPlanRepository(private val context: Context) {
     }
 
     suspend fun saveMealPlans(plans: List<MealPlan>) {
+        val key = getCurrentUserMealPlanKey()
         context.mealPlanDataStore.edit { preferences ->
-            preferences[PreferencesKeys.MEAL_PLANS] = Json.encodeToString(plans)
+            preferences[key] = Json.encodeToString(plans)
+        }
+    }
+
+    suspend fun clearMealPlans() {
+        val key = getCurrentUserMealPlanKey()
+        context.mealPlanDataStore.edit { preferences ->
+            preferences.remove(key)
         }
     }
 } 

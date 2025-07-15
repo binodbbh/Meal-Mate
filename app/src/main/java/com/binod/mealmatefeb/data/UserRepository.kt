@@ -27,9 +27,22 @@ class UserRepository(private val context: Context) {
         return true
     }
 
+    suspend fun getCurrentUser(): User? {
+        return context.dataStore.data.map { preferences ->
+            val loggedInUserEmail = preferences[PreferencesKeys.LOGGED_IN_USER] ?: return@map null
+            getUsers().find { it.email == loggedInUserEmail }
+        }.first()
+    }
+
     suspend fun loginUser(email: String, password: String): User? {
         val users = getUsers()
-        return users.find { it.email == email && it.password == password }
+        val user = users.find { it.email == email && it.password == password }
+        if (user != null) {
+            context.dataStore.edit { preferences ->
+                preferences[PreferencesKeys.LOGGED_IN_USER] = user.email
+            }
+        }
+        return user
     }
 
     suspend fun getUsers(): List<User> {
@@ -47,5 +60,13 @@ class UserRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences.remove(PreferencesKeys.LOGGED_IN_USER)
         }
+        // Clear all user-specific data when logging out
+        val itemRepository = ItemRepository(context, this)
+        val recipeRepository = RecipeRepository(context, this)
+        val mealPlanRepository = MealPlanRepository(context, this)
+        
+        itemRepository.clearItems()
+        recipeRepository.clearRecipes()
+        mealPlanRepository.clearMealPlans()
     }
 } 

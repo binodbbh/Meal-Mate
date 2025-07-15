@@ -1,33 +1,30 @@
 package com.binod.mealmatefeb.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.binod.mealmatefeb.data.*
+import com.binod.mealmatefeb.viewmodel.*
 import java.text.SimpleDateFormat
 import java.util.*
-import com.binod.mealmatefeb.viewmodel.RecipeViewModel
-import com.binod.mealmatefeb.components.RecipeCard
-import com.binod.mealmatefeb.components.GroceryListDialog
-import com.binod.mealmatefeb.viewmodel.MealPlanViewModel
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.foundation.clickable
-import com.binod.mealmatefeb.viewmodel.ItemViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun MealPlannerScreen(
     viewModel: RecipeViewModel,
     mealPlanViewModel: MealPlanViewModel,
     itemViewModel: ItemViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToShoppingList: () -> Unit
 ) {
     val recipes by viewModel.recipes.collectAsState()
     val mealPlans by mealPlanViewModel.mealPlans.collectAsState()
@@ -38,29 +35,59 @@ fun MealPlannerScreen(
     }
     var showRecipeDialog by remember { mutableStateOf(false) }
     var selectedMealType by remember { mutableStateOf<MealType?>(null) }
-    var showGroceryList by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
 
     val weekStartDate = getWeekStartDate(selectedDay)
     val currentWeekPlan = mealPlans.find { it.weekStartDate == weekStartDate }
+    
+    val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
+    val listState = rememberLazyListState()
+    val currentDayIndex = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = "Weekly Meal Planner",
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+    LaunchedEffect(Unit) {
+        listState.scrollToItem(currentDayIndex)
+    }
 
-        // Horizontal scrollable days
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Week indicator
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Week of ${dateFormat.format(Date(weekStartDate))}",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Days of week
         LazyRow(
-            modifier = Modifier.fillMaxWidth(),
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(getDaysOfWeek()) { day ->
                 val dayNumber = getDayNumber(day)
+                val dayCalendar = Calendar.getInstance().apply {
+                    timeInMillis = selectedDay.timeInMillis
+                    set(Calendar.DAY_OF_WEEK, dayNumber)
+                }
+                val isToday = dayNumber == Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
                 DayTab(
                     day = day,
+                    date = dateFormat.format(dayCalendar.time),
                     isSelected = selectedDay.get(Calendar.DAY_OF_WEEK) == dayNumber,
+                    isToday = isToday,
                     onClick = {
                         val newCalendar = Calendar.getInstance().apply {
                             firstDayOfWeek = Calendar.SUNDAY
@@ -73,13 +100,11 @@ fun MealPlannerScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Selected day's meal plan
         val selectedDayPlan = currentWeekPlan?.dailyPlans?.get(selectedDay.get(Calendar.DAY_OF_WEEK))
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(MealType.values().toList()) { mealType ->
                 val recipe = when (mealType) {
@@ -107,14 +132,33 @@ fun MealPlannerScreen(
             }
         }
 
-        Button(
-            onClick = { showConfirmDialog = true },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+        // Action buttons
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Add to Shopping List")
+            Button(
+                onClick = { showConfirmDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text("Add Week's Meals to Shopping List")
+            }
+            
+            OutlinedButton(
+                onClick = onNavigateToShoppingList,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("View Shopping List")
+            }
         }
     }
 
+    // Dialogs
     if (showRecipeDialog && selectedMealType != null) {
         RecipeSelectionDialog(
             recipes = recipes,
@@ -131,15 +175,6 @@ fun MealPlannerScreen(
         )
     }
 
-    if (showGroceryList) {
-        GroceryListDialog(
-            selectedRecipes = currentWeekPlan?.dailyPlans?.values?.flatMap { dayPlan ->
-                listOfNotNull(dayPlan.breakfast, dayPlan.lunch, dayPlan.dinner)
-            } ?: emptyList(),
-            onDismiss = { showGroceryList = false }
-        )
-    }
-
     if (showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
@@ -150,6 +185,7 @@ fun MealPlannerScreen(
                     onClick = {
                         mealPlanViewModel.addIngredientsToShoppingList(currentWeekPlan, itemViewModel)
                         showConfirmDialog = false
+                        onNavigateToShoppingList()
                     }
                 ) {
                     Text("Yes")
@@ -173,34 +209,67 @@ fun MealSlotCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when (mealType) {
+                MealType.BREAKFAST -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                MealType.LUNCH -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                MealType.DINNER -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+            }
+        )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = mealType.name.capitalize(),
-                    style = MaterialTheme.typography.titleMedium
+                    text = mealType.name.lowercase().replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(
-                    text = recipe?.name ?: "No meal planned",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            Row {
-                TextButton(onClick = onAddClick) {
-                    Text(if (recipe == null) "Add" else "Change")
-                }
-                if (recipe != null) {
-                    IconButton(onClick = onDeleteClick) {
-                        Icon(Icons.Default.Delete, "Remove Recipe")
+                Row {
+                    TextButton(onClick = onAddClick) {
+                        Text(if (recipe == null) "Add Meal" else "Change")
+                    }
+                    if (recipe != null) {
+                        IconButton(onClick = onDeleteClick) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Remove Recipe",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
+            }
+            
+            if (recipe != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column {
+                    Text(
+                        text = recipe.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Preparation time: ${recipe.preparationTime} minutes",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "No meal planned",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -209,58 +278,54 @@ fun MealSlotCard(
 @Composable
 fun DayTab(
     day: String,
+    date: String,
     isSelected: Boolean,
+    isToday: Boolean,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
-            .padding(horizontal = 8.dp),
+            .width(100.dp)
+            .padding(horizontal = 4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
-        )
+            containerColor = when {
+                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isToday -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surface
+            }
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isSelected) 4.dp else 1.dp
+        ),
+        border = if (isToday) CardDefaults.outlinedCardBorder() else null
     ) {
-        TextButton(
-            onClick = onClick,
-            modifier = Modifier.padding(horizontal = 8.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = day,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                else MaterialTheme.colorScheme.onSurface
+                text = day.substring(0, 3),
+                style = MaterialTheme.typography.labelLarge,
+                color = when {
+                    isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    isToday -> MaterialTheme.colorScheme.onSecondaryContainer
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
+            )
+            Text(
+                text = date,
+                style = MaterialTheme.typography.bodySmall,
+                color = when {
+                    isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    isToday -> MaterialTheme.colorScheme.onSecondaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
             )
         }
     }
-}
-
-private fun getDaysOfWeek(): List<String> {
-    return listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-}
-
-private fun getDayNumber(dayName: String): Int {
-    return when (dayName) {
-        "Sunday" -> Calendar.SUNDAY
-        "Monday" -> Calendar.MONDAY
-        "Tuesday" -> Calendar.TUESDAY
-        "Wednesday" -> Calendar.WEDNESDAY
-        "Thursday" -> Calendar.THURSDAY
-        "Friday" -> Calendar.FRIDAY
-        "Saturday" -> Calendar.SATURDAY
-        else -> Calendar.SUNDAY
-    }
-}
-
-private fun getWeekStartDate(calendar: Calendar): Long {
-    val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-    val diff = Calendar.SUNDAY - dayOfWeek
-    val weekStart = calendar.clone() as Calendar
-    weekStart.add(Calendar.DAY_OF_WEEK, diff)
-    weekStart.set(Calendar.HOUR_OF_DAY, 0)
-    weekStart.set(Calendar.MINUTE, 0)
-    weekStart.set(Calendar.SECOND, 0)
-    weekStart.set(Calendar.MILLISECOND, 0)
-    return weekStart.timeInMillis
 }
 
 @Composable
@@ -291,4 +356,31 @@ fun RecipeSelectionDialog(
             }
         }
     )
+}
+
+private fun getDaysOfWeek(): List<String> {
+    return listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+}
+
+private fun getDayNumber(dayName: String): Int {
+    return when (dayName) {
+        "Sunday" -> Calendar.SUNDAY
+        "Monday" -> Calendar.MONDAY
+        "Tuesday" -> Calendar.TUESDAY
+        "Wednesday" -> Calendar.WEDNESDAY
+        "Thursday" -> Calendar.THURSDAY
+        "Friday" -> Calendar.FRIDAY
+        "Saturday" -> Calendar.SATURDAY
+        else -> Calendar.SUNDAY
+    }
+}
+
+private fun getWeekStartDate(calendar: Calendar): Long {
+    val weekStart = calendar.clone() as Calendar
+    weekStart.set(Calendar.DAY_OF_WEEK, weekStart.firstDayOfWeek)
+    weekStart.set(Calendar.HOUR_OF_DAY, 0)
+    weekStart.set(Calendar.MINUTE, 0)
+    weekStart.set(Calendar.SECOND, 0)
+    weekStart.set(Calendar.MILLISECOND, 0)
+    return weekStart.timeInMillis
 } 

@@ -57,24 +57,29 @@ class MealPlanViewModel(private val repository: MealPlanRepository) : ViewModel(
             } ?: return@launch
 
             // Create a list to hold all ingredients
-            val allIngredients = mutableListOf<Pair<String, Int>>()
+            val allIngredients = mutableListOf<Ingredient>()
 
             // Collect all ingredients first
             allRecipes.forEach { recipe ->
                 recipe.ingredients.forEach { ingredient ->
                     val quantity = kotlin.math.ceil(ingredient.quantity).toInt()
-                    val name = "${ingredient.name} (${ingredient.unit})"
-                    allIngredients.add(name to quantity)
+                    allIngredients.add(ingredient.copy(quantity = quantity.toDouble()))
                 }
             }
 
-            // Clear existing items and add all ingredients at once
-            val newItems = allIngredients.map { (name, quantity) ->
-                Item(name = name, quantity = quantity)
+            // Group ingredients by name and category, summing quantities
+            val groupedIngredients = allIngredients.groupBy { it.name }.map { (name, ingredients) ->
+                val totalQuantity = ingredients.sumOf { it.quantity }.toInt()
+                val firstIngredient = ingredients.first()
+                Item(
+                    name = name,
+                    quantity = totalQuantity,
+                    category = firstIngredient.category
+                )
             }
             
             // Save all items at once
-            itemViewModel.saveAllItems(newItems)
+            itemViewModel.saveAllItems(groupedIngredients)
         }
     }
 } 

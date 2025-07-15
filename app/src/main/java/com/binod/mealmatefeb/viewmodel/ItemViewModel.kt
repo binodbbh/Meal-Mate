@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.binod.mealmatefeb.data.Item
 import com.binod.mealmatefeb.data.ItemRepository
+import com.binod.mealmatefeb.data.IngredientCategory
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -13,9 +14,9 @@ class ItemViewModel(private val repository: ItemRepository) : ViewModel() {
     val items: StateFlow<List<Item>> = repository.items
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun addItem(name: String, quantity: Int) {
+    fun addItem(name: String, quantity: Int, category: IngredientCategory = IngredientCategory.OTHER) {
         viewModelScope.launch {
-            val newItem = Item(name = name, quantity = quantity)
+            val newItem = Item(name = name, quantity = quantity, category = category)
             repository.saveItems(items.value + newItem)
         }
     }

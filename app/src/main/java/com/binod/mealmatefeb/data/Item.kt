@@ -7,5 +7,6 @@ data class Item(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val quantity: Int,
-    val isBought: Boolean = false
+    val isBought: Boolean = false,
+    val category: IngredientCategory = IngredientCategory.OTHER
 ) 
