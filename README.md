@@ -39,4 +39,4 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 This project is licensed for educational purposes as part of an academic assignment.
 
 ## Contact
-For questions or support, contact: Binod Bhusal 
+For questions or support, contact: Binod Bhusal # Car-Price-Prediction-using-machine-learning
